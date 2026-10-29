@@ -10,6 +10,7 @@ import re
 import json
 import math
 import datetime as dt
+import time
 import xml.etree.ElementTree as ET
 
 import requests
@@ -21,6 +22,9 @@ GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
 ODDS_KEY = os.environ.get("ODDS_API_KEY", "")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
 MODE = os.environ.get("MODE", "poll")
+PUBLIC_MODE = os.environ.get("PUBLIC_MODE", "false").strip().lower() in ("1", "true", "yes", "on")
+USER_COOLDOWN_SECONDS = int(os.environ.get("USER_COOLDOWN_SECONDS", "30"))
+_LAST_REQUEST = {}
 
 MIN_EDGE = 0.03          # минимальный перевес над коэффициентом для "value"
 EXPRESS_MIN_PROB = 0.55  # минимальная вероятность события для экспресса
@@ -367,17 +371,26 @@ def handle(chat_id, text):
                       "собственный экземпляр бота.\\n\\n" + HELP)
         return
     if low.startswith("/start"):
-        if CHAT_ID and chat_id != CHAT_ID:
+        if not PUBLIC_MODE and CHAT_ID and chat_id != CHAT_ID:
             send(chat_id,
                  "🏒 HOCKEY PULSE\\n\\n"
                  "🤖 Бесплатная хоккейная аналитика КХЛ и НХЛ.\\n"
                  "Сейчас бот находится в закрытом тестировании. "
-                 "Публичный доступ появится после настройки безопасного режима.")
+                 "Публичный доступ будет включён после проверки.")
         else:
             send_main_menu(chat_id)
         return
-    if not CHAT_ID or chat_id != CHAT_ID:
-        return  # пока закрытое тестирование: команды доступны только разрешённому chat id
+    # По умолчанию доступ закрыт; PUBLIC_MODE=true включается только после проверки.
+    if not PUBLIC_MODE and (not CHAT_ID or chat_id != CHAT_ID):
+        return
+    # Ограничиваем частоту команд, вызывающих внешние API/ИИ.
+    if low.startswith(("/сегодня", "/today", "/кф", "кф ", "сегодня")):
+        now = time.monotonic()
+        previous = _LAST_REQUEST.get(chat_id, 0)
+        if now - previous < USER_COOLDOWN_SECONDS:
+            send(chat_id, f"⏳ Подожди {USER_COOLDOWN_SECONDS} секунд перед следующим аналитическим запросом.")
+            return
+        _LAST_REQUEST[chat_id] = now
     if low in ("📅 матчи дня", "🇺🇸 аналитика нхл"):
         low = "/сегодня"
     elif low == "🇷🇺 аналитика кхл":
@@ -436,7 +449,44 @@ def digest():
         send(CHAT_ID, f"Дайджест не собрался: {e}")
 
 
+def serve():
+    """Постоянный long-polling процесс; дайджест владельцу ежедневно в 08:00 МСК."""
+    offset = None
+    last_digest_date = None
+    print("HOCKEY PULSE service started; PUBLIC_MODE=", PUBLIC_MODE)
+    while True:
+        now_utc = dt.datetime.now(dt.timezone.utc)
+        if now_utc.hour == 5 and last_digest_date != now_utc.date():
+            digest()
+            last_digest_date = now_utc.date()
+        try:
+            params = {"timeout": 25, "allowed_updates": ["message"]}
+            if offset is not None:
+                params["offset"] = offset
+            response = tg("getUpdates", **params)
+            if not response.get("ok"):
+                raise RuntimeError("Telegram getUpdates вернул ошибку")
+            for update in response.get("result", []):
+                offset = update["update_id"] + 1
+                message = update.get("message") or {}
+                text = (message.get("text") or "").strip()
+                chat_id = str((message.get("chat") or {}).get("id", ""))
+                if text and chat_id:
+                    try:
+                        handle(chat_id, text)
+                    except Exception as exc:
+                        print("Ошибка обработки update:", exc)
+        except Exception as exc:
+            print("Ошибка long polling:", exc)
+            time.sleep(5)
+
+
 if __name__ == "__main__":
     if not TG_TOKEN:
         raise SystemExit("Не задан TELEGRAM_TOKEN")
-    digest() if MODE == "digest" else poll()
+    if MODE == "digest":
+        digest()
+    elif MODE == "serve":
+        serve()
+    else:
+        poll()
