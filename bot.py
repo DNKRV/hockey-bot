@@ -1,10 +1,9 @@
 """
-Хоккейный аналитик (НХЛ + КХЛ) для Telegram.
-Работает без сервера: запускается по расписанию в GitHub Actions.
+HOCKEY PULSE — хоккейная аналитика для Telegram (НХЛ + КХЛ).
 
 Режимы (переменная MODE):
-  digest - утренний дайджест (ставки + экспресс)
-  poll   - проверка новых сообщений боту (/сегодня, /кф, /id)
+  digest - утренний дайджест по НХЛ
+  poll   - проверка команд Telegram (/сегодня, /кф, /id)
 """
 import os
 import re
@@ -325,22 +324,71 @@ def khl_analyze(home, away, o_home, o_away):
 
 # ---------- Команды ----------
 HELP = (
-    "Команды:\n"
-    "/сегодня - разбор НХЛ на ближайшие сутки\n"
-    "/кф Хозяева - Гости 2.10 1.75 - разбор матча КХЛ (кф на победу с ОТ)\n"
-    "/id - узнать свой chat id\n"
-    "Ответ приходит с задержкой до ~15 минут. Дайджест приходит каждое утро в 8:00 МСК."
+    "🏒 HOCKEY PULSE | AI HOCKEY ANALYTICS\\n\\n"
+    "Меньше интуиции. Больше цифр.\\n\\n"
+    "📅 /сегодня — аналитика матчей НХЛ на ближайшие сутки\\n"
+    "🇷🇺 /кф Хозяева - Гости 2.10 1.75 — разбор матча КХЛ по введённым коэффициентам "
+    "(победа с учётом ОТ)\\n"
+    "ℹ️ /помощь — список команд\\n"
+    "🆔 /id — узнать свой chat id\\n\\n"
+    "🧊 Проект находится в тестовом режиме. Оценки модели не гарантируют результат.\\n"
+    "⏱️ Ответы могут задерживаться: бот запускается по расписанию GitHub Actions."
 )
+
+
+def send_main_menu(chat_id):
+    """Показывает брендированное меню владельцу/разрешённому пользователю."""
+    tg(
+        "sendMessage",
+        chat_id=chat_id,
+        text=(
+            "🏒 HOCKEY PULSE\\n"
+            "🤖 AI-аналитика КХЛ и НХЛ\\n\\n"
+            "Привет! Выбери раздел или отправь команду.\\n"
+            "Меньше интуиции. Больше цифр."
+        ),
+        reply_markup={
+            "keyboard": [
+                [{"text": "📅 Матчи дня"}, {"text": "🇺🇸 Аналитика НХЛ"}],
+                [{"text": "🇷🇺 Аналитика КХЛ"}, {"text": "ℹ️ Помощь"}],
+            ],
+            "resize_keyboard": True,
+            "is_persistent": True,
+        },
+        disable_web_page_preview=True,
+    )
 
 
 def handle(chat_id, text):
     low = text.lower().strip()
-    if low.startswith("/id") or low.startswith("/start"):
-        send(chat_id, f"Ваш chat id: {chat_id}\n"
-                      "Добавьте его в GitHub Secrets как TELEGRAM_CHAT_ID.\n\n" + HELP)
+    if low.startswith("/id"):
+        send(chat_id, f"🆔 Ваш chat id: {chat_id}\\n"
+                      "Добавьте его в GitHub Secrets как TELEGRAM_CHAT_ID, если настраиваете "
+                      "собственный экземпляр бота.\\n\\n" + HELP)
+        return
+    if low.startswith("/start"):
+        if CHAT_ID and chat_id != CHAT_ID:
+            send(chat_id,
+                 "🏒 HOCKEY PULSE\\n\\n"
+                 "🤖 Бесплатная хоккейная аналитика КХЛ и НХЛ.\\n"
+                 "Сейчас бот находится в закрытом тестировании. "
+                 "Публичный доступ появится после настройки безопасного режима.")
+        else:
+            send_main_menu(chat_id)
         return
     if not CHAT_ID or chat_id != CHAT_ID:
-        return  # посторонним не отвечаем
+        return  # пока закрытое тестирование: команды доступны только разрешённому chat id
+    if low in ("📅 матчи дня", "🇺🇸 аналитика нхл"):
+        low = "/сегодня"
+    elif low == "🇷🇺 аналитика кхл":
+        send(chat_id, "🇷🇺 Аналитика КХЛ\\n\\n"
+                      "Отправь коэффициенты в формате:\\n"
+                      "/кф Динамо - СКА 2.10 1.75\\n"
+                      "Указывай коэффициенты на победу с учётом овертайма.")
+        return
+    elif low == "ℹ️ помощь":
+        send(chat_id, HELP)
+        return
     if low.startswith("/сегодня") or low.startswith("/today") or low == "сегодня":
         try:
             send(chat_id, format_nhl(build_nhl_games()))
