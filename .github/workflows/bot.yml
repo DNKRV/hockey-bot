@@ -1,0 +1,35 @@
+name: hockey-bot
+
+on:
+  schedule:
+    - cron: "0 5 * * *"      # дайджест: 05:00 UTC = 08:00 МСК
+    - cron: "*/15 * * * *"   # проверка сообщений каждые 15 минут
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Режим запуска"
+        type: choice
+        options: [poll, digest]
+        default: poll
+
+concurrency:
+  group: hockey-bot
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+      - run: python bot.py
+        env:
+          MODE: ${{ github.event.inputs.mode || (github.event.schedule == '0 5 * * *' && 'digest' || 'poll') }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
