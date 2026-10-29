@@ -371,7 +371,7 @@ def handle(chat_id, text):
                       "собственный экземпляр бота.\\n\\n" + HELP)
         return
     if low.startswith("/start"):
-        if not PUBLIC_MODE and CHAT_ID and chat_id != CHAT_ID:
+        if not PUBLIC_MODE and (not CHAT_ID or chat_id != CHAT_ID):
             send(chat_id,
                  "🏒 HOCKEY PULSE\\n\\n"
                  "🤖 Бесплатная хоккейная аналитика КХЛ и НХЛ.\\n"
