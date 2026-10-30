@@ -15,6 +15,8 @@ import xml.etree.ElementTree as ET
 
 import requests
 
+from prediction_tracking import save_prediction, settle_nhl, daily_report
+
 # ---------- Настройки ----------
 TG_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
@@ -209,6 +211,7 @@ def build_nhl_games():
         p_mod = model_prob(standings.get(last_word(home)), standings.get(last_word(away)))
         p_base = p_mkt if p_mod is None else 0.7 * p_mkt + 0.3 * p_mod
         games.append({
+            "event_id": ev["id"], "sport_key": "icehockey_nhl",
             "home": home, "away": away, "start": start.astimezone(MSK),
             "p_mkt_home": p_mkt, "p_base_home": p_base,
             "odd_home": best[home], "odd_away": best[away], "note": "",
@@ -242,6 +245,11 @@ def format_nhl(games):
     picks = best_picks(games)
     singles = sorted([x for x in picks if x["edge"] >= MIN_EDGE],
                      key=lambda x: -x["edge"])
+    # Сохраняем точный предматчевый прогноз один раз; повторные запросы не перезаписывают цену.
+    for x in singles:
+        g = x["game"]
+        save_prediction(g["event_id"], g["sport_key"], "NHL", g["home"], g["away"],
+                        g["start"], x["team"], x["odd"], x["p"], x["edge"])
     out = ["🏒 НХЛ - разбор на ближайшие сутки", ""]
 
     if singles:
@@ -333,6 +341,7 @@ HELP = (
     "📅 /сегодня — аналитика матчей НХЛ на ближайшие сутки\\n"
     "🇷🇺 /кф Хозяева - Гости 2.10 1.75 — разбор матча КХЛ по введённым коэффициентам "
     "(победа с учётом ОТ)\\n"
+    "📊 /отчёт — результаты прогнозов за сегодня\\n"
     "ℹ️ /помощь — список команд\\n"
     "🆔 /id — узнать свой chat id\\n\\n"
     "🧊 Проект находится в тестовом режиме. Оценки модели не гарантируют результат.\\n"
@@ -382,6 +391,13 @@ def handle(chat_id, text):
         return
     # По умолчанию доступ закрыт; PUBLIC_MODE=true включается только после проверки.
     if not PUBLIC_MODE and (not CHAT_ID or chat_id != CHAT_ID):
+        return
+    if low.startswith("/отчет") or low.startswith("/отчёт"):
+        try:
+            settle_nhl(ODDS_KEY)
+            send(chat_id, daily_report())
+        except Exception as e:
+            send(chat_id, f"Не удалось сформировать отчёт: {e}")
         return
     # Ограничиваем частоту команд, вызывающих внешние API/ИИ.
     if low.startswith(("/сегодня", "/today", "/кф", "кф ", "сегодня")):
@@ -445,8 +461,10 @@ def digest():
         return
     try:
         send(CHAT_ID, format_nhl(build_nhl_games()))
+        settle_nhl(ODDS_KEY)
+        send(CHAT_ID, daily_report())
     except Exception as e:
-        send(CHAT_ID, f"Дайджест не собрался: {e}")
+        send(CHAT_ID, f"Дайджест/отчёт не собрался: {e}")
 
 
 def serve():
