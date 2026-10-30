@@ -374,7 +374,7 @@ def send_main_menu(chat_id):
 
 def handle(chat_id, text):
     low = text.lower().strip()
-    if low.startswith("/отчет") or low.startswith("/отчёт"):\n        try:\n            settle_nhl(ODDS_KEY)\n            send(chat_id, daily_report())\n        except Exception as e:\n            send(chat_id, f"Не удалось сформировать отчёт: {e}")\n        return\n    if low.startswith("/отчет") or low.startswith("/отчёт"):
+    if low.startswith("/отчет") or low.startswith("/отчёт"):
         try:
             settle_nhl(ODDS_KEY)
             send(chat_id, daily_report())
@@ -398,6 +398,13 @@ def handle(chat_id, text):
         return
     # По умолчанию доступ закрыт; PUBLIC_MODE=true включается только после проверки.
     if not PUBLIC_MODE and (not CHAT_ID or chat_id != CHAT_ID):
+        return
+    if low.startswith("/отчет") or low.startswith("/отчёт"):
+        try:
+            settle_nhl(ODDS_KEY)
+            send(chat_id, daily_report())
+        except Exception as e:
+            send(chat_id, f"Не удалось сформировать отчёт: {e}")
         return
     # Ограничиваем частоту команд, вызывающих внешние API/ИИ.
     if low.startswith(("/сегодня", "/today", "/кф", "кф ", "сегодня")):
