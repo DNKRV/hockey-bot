@@ -33,7 +33,7 @@ def _connect():
             home_score INTEGER,
             away_score INTEGER,
             settled_at TEXT,
-            UNIQUE(event_id, selection)
+            UNIQUE(event_id)
         )
     """)
     con.execute("CREATE INDEX IF NOT EXISTS idx_predictions_created ON predictions(created_at)")
