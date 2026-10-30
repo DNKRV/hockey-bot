@@ -374,13 +374,6 @@ def send_main_menu(chat_id):
 
 def handle(chat_id, text):
     low = text.lower().strip()
-    if low.startswith("/отчет") or low.startswith("/отчёт"):
-        try:
-            settle_nhl(ODDS_KEY)
-            send(chat_id, daily_report())
-        except Exception as e:
-            send(chat_id, f"Не удалось сформировать отчёт: {e}")
-        return
     if low.startswith("/id"):
         send(chat_id, f"🆔 Ваш chat id: {chat_id}\\n"
                       "Добавьте его в GitHub Secrets как TELEGRAM_CHAT_ID, если настраиваете "
